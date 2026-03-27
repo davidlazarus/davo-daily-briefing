@@ -2,5 +2,5 @@
 builder = "nixpacks"
 
 [deploy]
-startCommand = "python main.py --serve"
+startCommand = "python main.py --test"
 restartPolicyType = "always"
