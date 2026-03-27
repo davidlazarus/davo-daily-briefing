@@ -1,5 +1,6 @@
 """
 Trello integration — fetches tasks from tomorrow's column.
+Uses Trello REST API directly (py-trello was getting CloudFront 403s).
 Board structure: each list (column) = a day of the week.
 Columns named: ★MONDAY★, ★TUESDAY★, etc.
 Cards use colored header cards (KJD, CRTVS, ALP, PERSO) as category separators.
@@ -7,8 +8,10 @@ Cards use colored header cards (KJD, CRTVS, ALP, PERSO) as category separators.
 
 import os
 import datetime
-from trello import TrelloClient
+import requests
 
+
+TRELLO_API_BASE = "https://api.trello.com/1"
 
 # Davo's column names use star emoji wrappers
 DAY_KEYWORDS = {
@@ -22,15 +25,36 @@ DAY_KEYWORDS = {
 }
 
 # These are category header cards, not actual tasks.
-# They separate tasks by business/personal context.
 CATEGORY_HEADERS = {"kjd", "crtvs", "alp", "perso", "sales"}
 
 
-def get_client():
-    return TrelloClient(
-        api_key=os.getenv("TRELLO_API_KEY"),
-        token=os.getenv("TRELLO_TOKEN"),
+def _trello_params():
+    """Return auth params for Trello API."""
+    return {
+        "key": os.getenv("TRELLO_API_KEY"),
+        "token": os.getenv("TRELLO_TOKEN"),
+    }
+
+
+def _trello_get(endpoint: str, extra_params: dict = None) -> dict | list:
+    """Make a GET request to Trello API with proper headers."""
+    params = _trello_params()
+    if extra_params:
+        params.update(extra_params)
+
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": "DavoBriefingAgent/1.0",
+    }
+
+    resp = requests.get(
+        f"{TRELLO_API_BASE}{endpoint}",
+        params=params,
+        headers=headers,
+        timeout=30,
     )
+    resp.raise_for_status()
+    return resp.json()
 
 
 def _is_header_card(card_name: str) -> bool:
@@ -64,49 +88,56 @@ def fetch_trello_tasks(target_date: datetime.date = None) -> list[dict]:
         target_date = datetime.date.today() + datetime.timedelta(days=1)
 
     day_keyword = DAY_KEYWORDS[target_date.weekday()]
-    client = get_client()
     board_id = os.getenv("TRELLO_BOARD_ID")
-    board = client.get_board(board_id)
 
-    # Find the list — match day keyword inside column name
-    # Handles: ★MONDAY★, ★ MONDAY ★, Monday, etc.
-    target_list = None
-    for lst in board.list_lists():
-        cleaned_name = lst.name.strip().lower().replace("★", "").replace("*", "").strip()
+    # 1. Get all lists on the board
+    lists = _trello_get(f"/boards/{board_id}/lists", {"filter": "open"})
+
+    # 2. Find the list matching tomorrow's day
+    target_list_id = None
+    for lst in lists:
+        cleaned_name = lst["name"].strip().lower().replace("★", "").replace("*", "").strip()
         if day_keyword in cleaned_name:
-            target_list = lst
+            target_list_id = lst["id"]
             break
 
-    if target_list is None:
+    if target_list_id is None:
         return [{"name": f"No Trello list found for {day_keyword.title()}", "description": "", "category": "Unknown"}]
 
-    cards = target_list.list_cards()
+    # 3. Get all cards in that list
+    cards = _trello_get(
+        f"/lists/{target_list_id}/cards",
+        {"fields": "name,desc,due,labels", "checklists": "all"},
+    )
+
     parsed = []
     current_category = "Uncategorized"
 
     for card in cards:
+        card_name = card.get("name", "")
+
         # Check if this is a category header card
-        if _is_header_card(card.name):
-            current_category = _get_category(card.name, current_category)
+        if _is_header_card(card_name):
+            current_category = _get_category(card_name, current_category)
             continue  # Skip header cards — they're not tasks
 
         # Pull checklist items if any
         checklist_items = []
-        for cl in card.fetch_checklists():
-            for item in cl.items:
+        for cl in card.get("checklists", []):
+            for item in cl.get("checkItems", []):
                 checklist_items.append({
-                    "text": item["name"],
-                    "complete": item["checked"],
+                    "text": item.get("name", ""),
+                    "complete": item.get("state") == "complete",
                 })
 
-        # Check for priority/status labels
-        label_names = [l.name for l in card.labels] if card.labels else []
+        # Labels
+        label_names = [l.get("name", "") for l in card.get("labels", []) if l.get("name")]
 
         parsed.append({
-            "name": card.name,
+            "name": card_name,
             "category": current_category,
-            "description": card.description or "",
-            "due": str(card.due_date) if card.due_date else None,
+            "description": card.get("desc", ""),
+            "due": card.get("due"),
             "labels": label_names,
             "checklist_items": checklist_items,
         })
