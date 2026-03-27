@@ -13,11 +13,14 @@ BASE_URL = "https://api.plaud.ai"
 
 
 def get_headers():
-    token = os.getenv("PLAUD_AUTH_TOKEN")
+    token = os.getenv("PLAUD_AUTH_TOKEN", "")
+    # Strip "bearer " prefix if present — the env var might include it
+    if token.lower().startswith("bearer "):
+        token = token[7:]
     return {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
-        "User-Agent": "DavoBriefingAgent/1.0",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
     }
 
 

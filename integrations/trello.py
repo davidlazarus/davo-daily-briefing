@@ -44,7 +44,10 @@ def _trello_get(endpoint: str, extra_params: dict = None) -> dict | list:
 
     headers = {
         "Accept": "application/json",
-        "User-Agent": "DavoBriefingAgent/1.0",
+        "Accept-Language": "en-US,en;q=0.9",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+        "Origin": "https://trello.com",
+        "Referer": "https://trello.com/",
     }
 
     resp = requests.get(
