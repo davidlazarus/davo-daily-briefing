@@ -1,6 +1,6 @@
 """
 Plaud integration — fetches recent meeting transcripts and summaries.
-Uses the unofficial Plaud API (reverse-engineered endpoints).
+Uses the Plaud web API (reverse-engineered from web.plaud.ai).
 Auth token obtained from web.plaud.ai → DevTools → Local Storage → tokenstr.
 """
 
@@ -18,76 +18,122 @@ def get_headers():
     if token.lower().startswith("bearer "):
         token = token[7:]
     return {
-        "Authorization": f"Bearer {token}",
+        "Authorization": f"bearer {token}",
         "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        "App-Platform": "web",
+        "Edit-From": "web",
+        "Origin": "https://web.plaud.ai",
+        "Referer": "https://web.plaud.ai/",
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
     }
 
 
 def fetch_plaud_notes(hours_back: int = 48, max_results: int = 10) -> list[dict]:
     """
     Fetch recent Plaud recordings with transcripts and summaries.
-    Returns list of dicts: title, date, transcript_summary, duration, speakers.
-
-    Note: The Plaud API endpoints below are based on the unofficial reverse-engineered
-    client. If they change, check https://github.com/arbuzmell/plaud-api for updates.
+    Uses the /file/simple/web endpoint (the real Plaud web API).
     """
     headers = get_headers()
 
     try:
-        # Fetch recordings list
+        # Fetch recordings list — this is the actual endpoint Plaud's web app uses
         response = requests.get(
-            f"{BASE_URL}/api/v1/records",
+            f"{BASE_URL}/file/simple/web",
             headers=headers,
             params={
-                "page": 1,
-                "page_size": max_results,
-                "order": "desc",
+                "skip": 0,
+                "limit": max_results,
+                "is_trash": 2,  # 2 = not trash
+                "sort_by": "start_time",
+                "is_desc": "true",
             },
             timeout=30,
         )
         response.raise_for_status()
         data = response.json()
     except requests.RequestException as e:
-        return [{"title": "Plaud API error", "error": str(e)}]
+        return [{"title": "Plaud API error", "error": str(e), "summary": f"Could not connect to Plaud: {str(e)}"}]
 
-    records = data.get("data", {}).get("records", [])
+    # The response structure — extract the recordings list
+    # Try common response shapes
+    records = []
+    if isinstance(data, list):
+        records = data
+    elif isinstance(data, dict):
+        # Try various keys where records might live
+        for key in ["data", "files", "records", "items", "list"]:
+            candidate = data.get(key)
+            if isinstance(candidate, list):
+                records = candidate
+                break
+            elif isinstance(candidate, dict):
+                # Nested: data.records, data.files, etc.
+                for subkey in ["records", "files", "items", "list"]:
+                    sub = candidate.get(subkey)
+                    if isinstance(sub, list):
+                        records = sub
+                        break
+                if records:
+                    break
+
+    if not records:
+        # Return the raw response keys for debugging
+        if isinstance(data, dict):
+            return [{"title": "Plaud: no records found", "summary": f"Response keys: {list(data.keys())}", "date": ""}]
+        return [{"title": "Plaud: unexpected response format", "summary": str(data)[:300], "date": ""}]
+
     cutoff = datetime.now() - timedelta(hours=hours_back)
     parsed = []
 
     for record in records:
-        # Parse the record timestamp
-        created_at = record.get("created_at", "")
+        if not isinstance(record, dict):
+            continue
+
+        # Try to find timestamp — Plaud may use various field names
+        created_at = ""
+        for time_key in ["start_time", "created_at", "create_time", "date", "updated_at"]:
+            val = record.get(time_key)
+            if val:
+                # Could be a unix timestamp (int) or ISO string
+                if isinstance(val, (int, float)):
+                    created_at = datetime.fromtimestamp(val).isoformat()
+                else:
+                    created_at = str(val)
+                break
+
+        # Filter by recency
         try:
-            record_time = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+            if isinstance(record.get("start_time"), (int, float)):
+                record_time = datetime.fromtimestamp(record["start_time"])
+            else:
+                record_time = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
             if record_time.replace(tzinfo=None) < cutoff:
                 continue
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, OSError):
             pass  # Include if we can't parse the date
 
-        # Fetch the summary/transcript for this recording
-        record_id = record.get("id")
-        summary_text = ""
+        # Extract title — try various field names
+        title = ""
+        for title_key in ["title", "name", "file_name", "filename"]:
+            if record.get(title_key):
+                title = record[title_key]
+                break
+        title = title or "Untitled Recording"
 
-        if record_id:
-            try:
-                detail_resp = requests.get(
-                    f"{BASE_URL}/api/v1/records/{record_id}/summary",
-                    headers=headers,
-                    timeout=30,
-                )
-                if detail_resp.ok:
-                    summary_data = detail_resp.json()
-                    summary_text = summary_data.get("data", {}).get("summary", "")
-            except requests.RequestException:
-                summary_text = "(Could not fetch summary)"
+        # Extract summary/transcript
+        summary = ""
+        for summary_key in ["summary", "transcript", "content", "text", "description", "note"]:
+            if record.get(summary_key):
+                summary = record[summary_key]
+                break
 
         parsed.append({
-            "title": record.get("title", "Untitled Recording"),
+            "title": title,
             "date": created_at,
-            "summary": summary_text or record.get("summary", "No summary available"),
-            "duration_seconds": record.get("duration", 0),
-            "speakers": record.get("speakers", []),
+            "summary": summary or "No summary available",
+            "duration_seconds": record.get("duration", record.get("length", 0)),
         })
 
-    return parsed
+    return parsed if parsed else [{"title": "No recent Plaud recordings", "summary": "No recordings in the last 48 hours", "date": ""}]
