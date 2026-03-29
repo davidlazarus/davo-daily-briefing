@@ -35,14 +35,17 @@ def fetch_calendar_events(target_date: datetime.date = None) -> list[dict]:
         target_date = datetime.date.today() + datetime.timedelta(days=1)
 
     # Build time range: midnight to midnight in local tz
-    tz = os.getenv("TIMEZONE", "Australia/Melbourne")
-    time_min = f"{target_date.isoformat()}T00:00:00"
-    time_max = f"{target_date.isoformat()}T23:59:59"
+   tz = os.getenv("TIMEZONE", "Europe/Zurich")
+    import pytz
+    local_tz = pytz.timezone(tz)
+    from datetime import datetime
+    start_dt = local_tz.localize(datetime.combine(target_date, datetime.min.time()))
+    end_dt = local_tz.localize(datetime.combine(target_date, datetime.max.time()))
 
     events_result = service.events().list(
         calendarId="primary",
-        timeMin=f"{time_min}+11:00",  # AEST offset — will refine with pytz
-        timeMax=f"{time_max}+11:00",
+        timeMin=start_dt.isoformat(),
+        timeMax=end_dt.isoformat(),
         maxResults=50,
         singleEvents=True,
         orderBy="startTime",

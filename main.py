@@ -2,7 +2,7 @@
 Davo's Daily Briefing Agent — Main Orchestrator
 ================================================
 Runs on Railway via cron. Fetches data from all sources,
-generates a briefing via Claude, and emails it at 5am AEST.
+generates a briefing via Claude, and emails it at 5am CET.
 
 Usage:
   python main.py          # Run briefing now (manual trigger)
@@ -115,7 +115,7 @@ def start_scheduler():
     from apscheduler.schedulers.blocking import BlockingScheduler
     import pytz
 
-    tz_name = os.getenv("TIMEZONE", "Australia/Melbourne")
+    tz_name = os.getenv("TIMEZONE", "Europe/Zurich")
     hour = int(os.getenv("BRIEFING_HOUR", "5"))
     minute = int(os.getenv("BRIEFING_MINUTE", "0"))
     tz = pytz.timezone(tz_name)
