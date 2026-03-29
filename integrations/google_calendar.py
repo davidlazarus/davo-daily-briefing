@@ -1,10 +1,11 @@
 """
-Google Calendar integration — fetches tomorrow's events.
+Google Calendar integration — fetches today's events.
 Uses OAuth2 with a refresh token (no interactive browser flow needed on server).
 """
 
 import os
 import datetime
+import pytz
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
@@ -35,12 +36,10 @@ def fetch_calendar_events(target_date: datetime.date = None) -> list[dict]:
         target_date = datetime.date.today() + datetime.timedelta(days=1)
 
     # Build time range: midnight to midnight in local tz
-   tz = os.getenv("TIMEZONE", "Europe/Zurich")
-    import pytz
+    tz = os.getenv("TIMEZONE", "Europe/Zurich")
     local_tz = pytz.timezone(tz)
-    from datetime import datetime
-    start_dt = local_tz.localize(datetime.combine(target_date, datetime.min.time()))
-    end_dt = local_tz.localize(datetime.combine(target_date, datetime.max.time()))
+    start_dt = local_tz.localize(datetime.datetime.combine(target_date, datetime.time.min))
+    end_dt = local_tz.localize(datetime.datetime.combine(target_date, datetime.time(23, 59, 59)))
 
     events_result = service.events().list(
         calendarId="primary",
