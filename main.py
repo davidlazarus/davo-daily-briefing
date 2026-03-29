@@ -107,7 +107,7 @@ def _fetch_trello(target_date):
 
 def _fetch_plaud():
     from integrations.plaud import fetch_plaud_notes
-    return fetch_plaud_notes(hours_back=48)
+    return fetch_plaud_notes(hours_back=96)
 
 
 def start_scheduler():

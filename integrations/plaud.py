@@ -30,7 +30,7 @@ def get_headers():
     }
 
 
-def fetch_plaud_notes(hours_back: int = 48, max_results: int = 10) -> list[dict]:
+def fetch_plaud_notes(hours_back: int = 96, max_results: int = 10) -> list[dict]:
     """
     Fetch recent Plaud recordings with transcripts and summaries.
     Uses the /file/simple/web endpoint (the real Plaud web API).
