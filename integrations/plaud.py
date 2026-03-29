@@ -54,8 +54,13 @@ def fetch_plaud_notes(hours_back: int = 48, max_results: int = 10) -> list[dict]
         response.raise_for_status()
         data = response.json()
     except requests.RequestException as e:
+        import logging
+        logging.getLogger('briefing-agent').error(f'Plaud raw error: {e}')
         return [{"title": "Plaud API error", "error": str(e), "summary": f"Could not connect to Plaud: {str(e)}"}]
 
+    import logging
+    logging.getLogger("briefing-agent").info(f"Plaud raw response keys: {list(data.keys()) if isinstance(data, dict) else type(data)}")
+    logging.getLogger("briefing-agent").info(f"Plaud raw response (first 500): {str(data)[:500]}")
     # The response structure — extract the recordings list
     # Try common response shapes
     records = []

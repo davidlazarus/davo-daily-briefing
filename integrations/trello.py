@@ -1,5 +1,5 @@
 """
-Trello integration — fetches tasks from tomorrow's column.
+Trello integration — fetches tasks from today's column.
 Uses Trello REST API directly (py-trello was getting CloudFront 403s).
 Board structure: each list (column) = a day of the week.
 Columns named: ★MONDAY★, ★TUESDAY★, etc.
@@ -44,10 +44,7 @@ def _trello_get(endpoint: str, extra_params: dict = None) -> dict | list:
 
     headers = {
         "Accept": "application/json",
-        "Accept-Language": "en-US,en;q=0.9",
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-        "Origin": "https://trello.com",
-        "Referer": "https://trello.com/",
+        "User-Agent": "DavoBriefingAgent/1.0 (+https://kojador.com)",
     }
 
     resp = requests.get(
@@ -88,7 +85,7 @@ def fetch_trello_tasks(target_date: datetime.date = None) -> list[dict]:
     Returns list of dicts: name, category, description, due, labels, checklist_items.
     """
     if target_date is None:
-        target_date = datetime.date.today() + datetime.timedelta(days=1)
+        target_date = datetime.date.today()
 
     day_keyword = DAY_KEYWORDS[target_date.weekday()]
     board_id = os.getenv("TRELLO_BOARD_ID")

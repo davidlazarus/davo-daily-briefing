@@ -30,12 +30,12 @@ logger = logging.getLogger("briefing-agent")
 def run_briefing(dry_run: bool = False):
     """
     Main briefing pipeline:
-    1. Determine target date (tomorrow)
+    1. Determine target date (today)
     2. Fetch data from all sources (with graceful fallbacks)
     3. Generate briefing via AI
     4. Send via email (or print if dry_run)
     """
-    target_date = date.today() + timedelta(days=1)
+    target_date = date.today()
     date_str = target_date.strftime("%A, %B %d, %Y")
     logger.info(f"Generating briefing for {date_str}")
 
