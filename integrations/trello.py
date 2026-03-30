@@ -96,7 +96,7 @@ def fetch_trello_tasks(target_date: datetime.date = None) -> list[dict]:
     # 2. Find the list matching tomorrow's day
     target_list_id = None
     for lst in lists:
-        cleaned_name = lst["name"].strip().lower().replace("★", "").replace("*", "").strip()
+        cleaned_name = lst["name"].strip().lower().replace("★", "").replace("*", "").replace(" ", "").strip()
         if day_keyword in cleaned_name:
             target_list_id = lst["id"]
             break
