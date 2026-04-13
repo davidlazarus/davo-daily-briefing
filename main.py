@@ -57,6 +57,12 @@ def run_briefing(dry_run: bool = False):
         target_date=target_date,
     )
 
+    from integrations.vitals import fetch_vitals_summary
+
+    vitals_line = fetch_vitals_summary()
+    if vitals_line:
+        briefing_text = vitals_line + "\n\n" + briefing_text
+
     if dry_run:
         print("\n" + "=" * 60)
         print(f"  BRIEFING FOR {date_str}")
