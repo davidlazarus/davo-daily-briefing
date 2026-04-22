@@ -6,14 +6,15 @@ generates a briefing via Claude, and emails it at 5am CET.
 
 Usage:
   python main.py          # Run briefing now (manual trigger)
-  python main.py --serve  # Start the scheduler (for Railway)
+  python main.py --serve  # Start scheduler + API server (for Railway)
   python main.py --test   # Dry run — print briefing to console, don't email
 """
 
 import os
 import sys
 import logging
-from datetime import date, timedelta
+import threading
+from datetime import date
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -38,6 +39,9 @@ def run_briefing(dry_run: bool = False):
     target_date = date.today()
     date_str = target_date.strftime("%A, %B %d, %Y")
     logger.info(f"Generating briefing for {date_str}")
+    from storage import init_db
+
+    init_db().close()
 
     # --- 1. Fetch from all sources (each handles its own errors) ---
     calendar_events = _safe_fetch("Google Calendar", _fetch_calendar, target_date)
@@ -146,9 +150,27 @@ def start_scheduler():
         logger.info("Scheduler stopped.")
 
 
+def serve_scheduler_and_api():
+    """Run scheduler and FastAPI server together for Railway."""
+    import uvicorn
+    from storage import init_db
+
+    init_db().close()
+    port = int(os.getenv("PORT", "8080"))
+
+    def run_api():
+        uvicorn.run("api:app", host="0.0.0.0", port=port)
+
+    api_thread = threading.Thread(target=run_api, daemon=True, name="uvicorn-server")
+    api_thread.start()
+
+    # Keep existing scheduler behavior unchanged in main thread.
+    start_scheduler()
+
+
 if __name__ == "__main__":
     if "--serve" in sys.argv:
-        start_scheduler()
+        serve_scheduler_and_api()
     elif "--test" in sys.argv:
         run_briefing(dry_run=True)
     else:

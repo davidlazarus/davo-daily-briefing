@@ -8,6 +8,7 @@ from datetime import date, timedelta
 import anthropic
 
 from schedule import get_fixed_blocks, format_blocks_for_prompt, is_arlo_day
+from storage import save_briefing
 
 
 SYSTEM_PROMPT = """You are Davo's personal daily briefing agent. You produce a concise,
@@ -35,6 +36,15 @@ Structure:
 5. 🎙️ Plaud Notes (any recent meeting takeaways worth remembering)
 6. 💡 Heads Up (conflicts, tight windows, things to prep for)
 """
+
+SECTION_KEYWORDS = {
+    "calendar": ["schedule", "calendar"],
+    "email": ["email", "inbox"],
+    "tasks": ["top priorities", "priorities", "trello", "tasks"],
+    "recordings": ["plaud", "recordings", "notes"],
+    "health": ["health", "vitals", "training"],
+    "synthesis": ["day at a glance", "heads up", "synthesis", "glance"],
+}
 
 
 def generate_briefing(
@@ -93,7 +103,46 @@ appear as calendar events — flag them clearly as training. Keep it tight and u
         max_tokens=2000,
     )
 
-    return response.content[0].text
+    raw_markdown = response.content[0].text
+    sections = _parse_sections(raw_markdown)
+    save_briefing(target_date, sections, raw_markdown)
+    return raw_markdown
+
+
+def _parse_sections(markdown: str) -> dict:
+    parsed: dict[str, str] = {}
+    current_header = None
+    current_lines = []
+
+    for line in markdown.splitlines():
+        if line.startswith("## "):
+            if current_header is not None:
+                parsed[current_header] = "\n".join(current_lines).strip()
+            current_header = line[3:].strip()
+            current_lines = []
+            continue
+        current_lines.append(line)
+
+    if current_header is not None:
+        parsed[current_header] = "\n".join(current_lines).strip()
+
+    normalized = {key: "" for key in SECTION_KEYWORDS}
+    for header, body in parsed.items():
+        target_key = _section_key_for_header(header)
+        normalized[target_key] = body
+
+    if not parsed:
+        normalized["synthesis"] = markdown.strip()
+
+    return normalized
+
+
+def _section_key_for_header(header: str) -> str:
+    lower_header = header.lower()
+    for key, keywords in SECTION_KEYWORDS.items():
+        if any(keyword in lower_header for keyword in keywords):
+            return key
+    return "synthesis"
 
 
 def _format_calendar(events: list[dict]) -> str:
