@@ -2,6 +2,7 @@ import os
 
 from fastapi import FastAPI, Header, HTTPException
 
+from main import run_briefing
 from storage import get_by_date, get_latest, init_db
 
 app = FastAPI()
@@ -36,6 +37,13 @@ def by_date(date: str, authorization: str = Header("")):
     if not briefing:
         raise HTTPException(404, "Not found")
     return briefing
+
+
+@app.post("/api/briefing/generate")
+def generate(authorization: str = Header("")):
+    check_auth(authorization)
+    briefing = run_briefing(dry_run=False)
+    return {"status": "ok", "briefing": briefing}
 
 
 @app.get("/health")
